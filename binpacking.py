@@ -1,7 +1,5 @@
-import random
 import csv
 import operator
-
 
 class Bucket:
 
@@ -45,6 +43,9 @@ class Bucket:
             'largest element': self.largest_element
         }
         return str(ret_str)
+
+    def __gt__(self, other):
+        return self.size > other.size
     
     def __eq__(self, other):
         return self.name == other.name
@@ -83,53 +84,82 @@ class BucketList:
     def get_too_small(self):
         return [s.name for s in self.buckets if s.size < self.avg_size]
 
+    def deviation(self):
+        return sum([abs(self.avg_size - b.size) for b in self.buckets])/self.avg_size
+
+
     def balance(self):
-        print(self.biggest.size, self.avg_size)
-        # Implements https://stackoverflow.com/questions/16588669/spread-objects-evenly-over-multiple-collections
+        '''
+        Assign all batches that are bigger than the average size to buckets, 
+        minimizing the amount of size deviation from the average.
 
-        for bucket_name in sorted(self.get_too_big()):
-            bucket = self.buckets[bucket_name]
+        Then iterate through all the rest of the batches and add them to the 
+        buckets, minimizing the deviation from the average.
+        '''
 
-            # Remove the biggest element from the biggest bucket
-            if bucket.size - bucket.batches[bucket.largest_element] > self.avg_size:
-                rem = bucket.remove_batch(bucket.largest_element)
-                r_name = next(iter(rem))
+        # first get all the batches in a list
+        batches = []
 
-                self.smallest.add_batch(r_name, rem[r_name])
-                self.smallest = self.get_smallest()
-                self.biggest = self.get_biggest()
-                self.avg_size = self.get_avg_size()
-
-        for bucket in sorted(self.get_too_small()):
-            for bigger_name in sorted(self.get_too_big(), reverse=True):
-                bigger = self.buckets[bigger_name]
-
-                for item in sorted(bigger.batches, reverse=True):
-                    if bigger.size - bigger.batches[item] > self.avg_size:
-                        rem = bigger.remove_batch(item)
-                        r_name = next(iter(rem))
-
-                        self.buckets[bucket].add_batch(r_name, rem[r_name])
-                        self.smallest = self.get_smallest()
-                        self.avg_size = self.get_avg_size()
-                        self.biggest = self.get_biggest()
-
-
-                    
-        print(self.biggest.size, self.avg_size)
-
-    def __gt__(self, other):
-        return self.size > other.size
-
-    def __repr__(self):
-        return str(self.buckets)
-
-    def pretty_print(self):
+        # TODO maybe rework the whole thing so that we don't have to create a
+        # new list?
+        new_buckets = []
         for bucket in self.buckets:
-            print(bucket.name, bucket.size)
-            for batch in bucket.batches:
-                print('\t', batch, bucket.batches[batch])
+            new_buckets.append(Bucket(bucket.name))
+            for batch_name in bucket.batches:
+                batches.append((batch_name, bucket.batches[batch_name]))
 
+
+        # Sort the list of batches
+        batches = sorted(batches, key = operator.itemgetter(1), reverse = True)
+
+        
+        added = True
+        falses = [0]*len(new_buckets)
+        left_overs = []
+        # Now assign batches
+
+    
+        # Assign all the too-big batches first
+        for i, batch in enumerate(batches):
+
+            # Find the least-full bucket and assign this batch
+            if batch[1] > self.avg_size:
+                min_del = 10**7
+                min_idx = -1
+
+                # Find the lest-bad bucket
+                for j, bucket in enumerate(new_buckets):
+                    if (bucket.size + batch[1]) - self.avg_size < min_del:
+                        min_idx = j
+                        min_del = (bucket.size + batch[1]) - self.avg_size 
+
+                # Now add to the least-bad bucket
+                new_buckets[min_idx].add_batch(batch[0], batch[1])
+
+            else:
+                left_overs = batches[i:]
+                break
+
+        
+        
+        # Now iterate through remaining batches and add them to the bucket
+        # that will be _least_ over the average
+        for batch in left_overs:
+            min_del = 10**7
+            min_idx = -1
+
+            # Find the lest-bad bucket
+            for i, bucket in enumerate(new_buckets):
+                if (bucket.size + batch[1]) - self.avg_size < min_del:
+                    min_idx = i
+                    min_del = (bucket.size + batch[1]) - self.avg_size 
+
+            # Now add to the least-bad bucket
+            new_buckets[min_idx].add_batch(batch[0], batch[1])
+
+        return BucketList(new_buckets)
+
+'''
 batches = {}
 for line in csv.DictReader(open('washtenaw-retrieval.csv')):
     if line['Batch Name'] in batches:
@@ -152,3 +182,24 @@ bl.pretty_print()
 bl.balance()
 bl.pretty_print()
 
+bl_batches = 0
+for bucket in bl.buckets:
+    bl_batches += len(bucket.batches)
+
+print('------')
+new_bl = bl.balanced()
+new_bl.pretty_print()
+
+nnew_bl_batches = 0
+new_bl_batches = set()
+for bucket in new_bl.buckets:
+    nnew_bl_batches += len(bucket.batches)
+    for batch in bucket.batches:
+        new_bl_batches.add(batch)
+
+
+print('////////')
+print(len(batches), bl_batches, nnew_bl_batches) 
+print(bl.deviation(), new_bl.deviation())
+print(len(new_bl_batches.intersection(set(batches.keys()))))
+'''
